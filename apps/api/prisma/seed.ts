@@ -3,7 +3,6 @@ import bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient();
 
-// Stable UUID so the seed is idempotent and the clinic id passes API validation.
 const SYNCHRONY_CLINIC_ID = "11111111-1111-1111-1111-111111111111";
 
 async function main() {
@@ -54,7 +53,10 @@ async function main() {
     },
   });
 
-  const client = await prisma.client.create({
+  const existingClient = await prisma.client.findFirst({
+    where: { clinicId: clinic.id, email: "jane@example.com" },
+  });
+  const client = existingClient ?? await prisma.client.create({
     data: {
       clinicId: clinic.id,
       firstName: "Jane",
@@ -68,7 +70,10 @@ async function main() {
     },
   });
 
-  const patient = await prisma.patient.create({
+  const existingPatient = await prisma.patient.findFirst({
+    where: { clinicId: clinic.id, name: "Max", clientId: client.id },
+  });
+  const patient = existingPatient ?? await prisma.patient.create({
     data: {
       clinicId: clinic.id,
       clientId: client.id,
@@ -84,35 +89,15 @@ async function main() {
     },
   });
 
-  const adjustmentService = await prisma.service.create({
-    data: {
-      clinicId: clinic.id,
-      name: "Chiropractic Adjustment",
-      description: "Full body chiropractic adjustment",
-      price: 7500,
-      duration: 30,
-    },
-  });
-
-  const laserService = await prisma.service.create({
-    data: {
-      clinicId: clinic.id,
-      name: "Laser Therapy",
-      description: "Cold laser therapy session",
-      price: 5000,
-      duration: 15,
-    },
-  });
-
-  const evalService = await prisma.service.create({
-    data: {
-      clinicId: clinic.id,
-      name: "Initial Evaluation",
-      description: "Comprehensive initial evaluation and assessment",
-      price: 12500,
-      duration: 60,
-    },
-  });
+  const serviceData = [
+    { name: "Chiropractic Adjustment", description: "Full body chiropractic adjustment", price: 7500, duration: 30 },
+    { name: "Laser Therapy", description: "Cold laser therapy session", price: 5000, duration: 15 },
+    { name: "Initial Evaluation", description: "Comprehensive initial evaluation and assessment", price: 12500, duration: 60 },
+  ];
+  for (const s of serviceData) {
+    const exists = await prisma.service.findFirst({ where: { clinicId: clinic.id, name: s.name } });
+    if (!exists) await prisma.service.create({ data: { clinicId: clinic.id, ...s } });
+  }
 
   console.log("Seed data created:");
   console.log(`  Clinic: ${clinic.name} (${clinic.id})`);
@@ -120,7 +105,7 @@ async function main() {
   console.log(`  Provider: ${provider.email}`);
   console.log(`  Client: ${client.firstName} ${client.lastName}`);
   console.log(`  Patient: ${patient.name} (${patient.species})`);
-  console.log(`  Services: ${adjustmentService.name}, ${laserService.name}, ${evalService.name}`);
+  console.log(`  Services: ${serviceData.map((s) => s.name).join(", ")}`);
 }
 
 main()

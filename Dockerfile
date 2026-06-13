@@ -23,6 +23,8 @@ COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/apps/api/dist ./apps/api/dist
 COPY --from=build /app/apps/api/package.json ./apps/api/
 COPY --from=build /app/apps/api/prisma ./apps/api/prisma
+COPY --from=build /app/apps/api/tsconfig.json ./apps/api/
+COPY --from=build /app/tsconfig.base.json ./
 COPY --from=build /app/apps/web/dist ./apps/web/dist
 COPY --from=build /app/packages/types/dist ./packages/types/dist
 COPY --from=build /app/packages/types/package.json ./packages/types/
@@ -34,4 +36,4 @@ COPY --from=build /app/packages/api-client/package.json ./packages/api-client/
 ENV NODE_ENV=production
 EXPOSE 3000
 
-CMD ["sh", "-c", "node_modules/.bin/prisma migrate deploy --schema=apps/api/prisma/schema.prisma && node apps/api/dist/index.js"]
+CMD ["sh", "-c", "node_modules/.bin/prisma migrate deploy --schema=apps/api/prisma/schema.prisma && node_modules/.bin/tsx apps/api/prisma/seed.ts && node apps/api/dist/index.js"]
