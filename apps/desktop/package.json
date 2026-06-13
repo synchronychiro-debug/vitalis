@@ -1,0 +1,13 @@
+{
+  "name": "@vitalis/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "echo 'desktop app not yet scaffolded'",
+    "dev": "echo 'desktop app not yet scaffolded'",
+    "typecheck": "echo 'desktop app not yet scaffolded'",
+    "lint": "echo 'desktop app not yet scaffolded'",
+    "test": "echo 'no tests yet'",
+    "clean": "rm -rf dist .turbo"
+  }
+}

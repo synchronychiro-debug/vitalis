@@ -1,0 +1,13 @@
+{
+  "name": "@vitalis/mobile",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "echo 'mobile app not yet scaffolded'",
+    "dev": "echo 'mobile app not yet scaffolded'",
+    "typecheck": "echo 'mobile app not yet scaffolded'",
+    "lint": "echo 'mobile app not yet scaffolded'",
+    "test": "echo 'no tests yet'",
+    "clean": "rm -rf dist .turbo"
+  }
+}
