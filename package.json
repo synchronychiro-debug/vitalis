@@ -15,7 +15,8 @@
     "db:generate": "npm run db:generate --workspace=apps/api",
     "db:push": "npm run db:push --workspace=apps/api",
     "db:studio": "npm run db:studio --workspace=apps/api",
-    "clean": "turbo clean"
+    "clean": "turbo clean",
+    "start": "node apps/api/dist/index.js"
   },
   "devDependencies": {
     "turbo": "^2.5.0",
