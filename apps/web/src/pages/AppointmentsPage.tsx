@@ -16,6 +16,15 @@ interface Appointment {
   provider: { id: string; firstName: string; lastName: string };
 }
 
+interface User {
+  id: string;
+  firstName: string;
+  lastName: string;
+  role: string;
+}
+
+type ViewMode = "day" | "week" | "month";
+
 const STATUS_COLORS: Record<string, string> = {
   CONFIRMED: "bg-blue-100 text-blue-700",
   COMPLETED: "bg-green-100 text-green-700",
@@ -24,50 +33,86 @@ const STATUS_COLORS: Record<string, string> = {
   NO_SHOW: "bg-gray-100 text-gray-700",
 };
 
-function formatDate(iso: string) {
-  return new Date(iso).toLocaleDateString("en-US", {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-  });
+function toLocalDate(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function getDateRange(anchor: Date, view: ViewMode): { from: string; to: string } {
+  const from = new Date(anchor);
+  const to = new Date(anchor);
+
+  if (view === "day") {
+    // single day
+  } else if (view === "week") {
+    const dow = from.getDay();
+    from.setDate(from.getDate() - dow);
+    to.setDate(from.getDate() + 6);
+  } else {
+    from.setDate(1);
+    to.setMonth(to.getMonth() + 1, 0);
+  }
+
+  return { from: toLocalDate(from), to: toLocalDate(to) };
+}
+
+function navigateAnchor(anchor: Date, view: ViewMode, direction: -1 | 1): Date {
+  const d = new Date(anchor);
+  if (view === "day") d.setDate(d.getDate() + direction);
+  else if (view === "week") d.setDate(d.getDate() + 7 * direction);
+  else d.setMonth(d.getMonth() + direction);
+  return d;
+}
+
+function formatRangeLabel(anchor: Date, view: ViewMode): string {
+  if (view === "day") {
+    return anchor.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
+  }
+  const { from, to } = getDateRange(anchor, view);
+  const f = new Date(from + "T00:00:00");
+  const t = new Date(to + "T00:00:00");
+  if (view === "week") {
+    return `${f.toLocaleDateString("en-US", { month: "short", day: "numeric" })} – ${t.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`;
+  }
+  return anchor.toLocaleDateString("en-US", { month: "long", year: "numeric" });
 }
 
 function formatTime(iso: string) {
-  return new Date(iso).toLocaleTimeString("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-  });
+  return new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+}
+
+function formatDate(iso: string) {
+  return new Date(iso).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
 }
 
 function formatType(type: string) {
-  return type
-    .replace(/_/g, " ")
-    .toLowerCase()
-    .replace(/\b\w/g, (c) => c.toUpperCase());
+  return type.replace(/_/g, " ").toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 export function AppointmentsPage() {
   const queryClient = useQueryClient();
-  const [dateRange, setDateRange] = useState(() => {
-    const today = new Date();
-    const from = new Date(today);
-    from.setDate(from.getDate() - 1);
-    const to = new Date(today);
-    to.setDate(to.getDate() + 14);
-    return {
-      from: from.toISOString().split("T")[0],
-      to: to.toISOString().split("T")[0],
-    };
+  const [view, setView] = useState<ViewMode>("week");
+  const [anchor, setAnchor] = useState(() => new Date());
+  const [providerId, setProviderId] = useState<string>("");
+
+  const dateRange = getDateRange(anchor, view);
+
+  const { data: providers } = useQuery({
+    queryKey: ["users", "providers"],
+    queryFn: () => apiGet<User[]>("/users?role=PROVIDER"),
   });
 
   const params = new URLSearchParams({
     from: `${dateRange.from}T00:00:00Z`,
     to: `${dateRange.to}T23:59:59Z`,
-    limit: "100",
+    limit: "200",
   });
+  if (providerId) params.set("providerId", providerId);
 
   const { data, isLoading } = useQuery({
-    queryKey: ["appointments", dateRange],
+    queryKey: ["appointments", dateRange, providerId],
     queryFn: () => apiGet<Appointment[]>(`/appointments?${params}`),
   });
 
@@ -80,26 +125,71 @@ export function AppointmentsPage() {
   });
 
   const appointments = Array.isArray(data) ? data : [];
+  const providerList = Array.isArray(providers) ? providers : [];
 
   return (
     <div className="space-y-4">
       <h2 className="text-2xl font-bold text-gray-900">Schedule</h2>
 
-      <div className="flex gap-3 items-center">
-        <label className="text-sm text-gray-600">From</label>
-        <input
-          type="date"
-          value={dateRange.from}
-          onChange={(e) => setDateRange((r) => ({ ...r, from: e.target.value }))}
-          className="rounded-md border border-gray-300 px-3 py-1.5 text-sm"
-        />
-        <label className="text-sm text-gray-600">To</label>
-        <input
-          type="date"
-          value={dateRange.to}
-          onChange={(e) => setDateRange((r) => ({ ...r, to: e.target.value }))}
-          className="rounded-md border border-gray-300 px-3 py-1.5 text-sm"
-        />
+      <div className="flex flex-wrap items-center gap-4">
+        {/* View mode toggle */}
+        <div className="inline-flex rounded-md border border-gray-300 bg-white">
+          {(["day", "week", "month"] as const).map((m) => (
+            <button
+              key={m}
+              onClick={() => setView(m)}
+              className={`px-3 py-1.5 text-sm font-medium first:rounded-l-md last:rounded-r-md ${
+                view === m
+                  ? "bg-indigo-600 text-white"
+                  : "text-gray-700 hover:bg-gray-50"
+              }`}
+            >
+              {m.charAt(0).toUpperCase() + m.slice(1)}
+            </button>
+          ))}
+        </div>
+
+        {/* Date navigation */}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setAnchor((a) => navigateAnchor(a, view, -1))}
+            className="rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
+          >
+            &larr;
+          </button>
+          <button
+            onClick={() => setAnchor(new Date())}
+            className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+          >
+            Today
+          </button>
+          <button
+            onClick={() => setAnchor((a) => navigateAnchor(a, view, 1))}
+            className="rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
+          >
+            &rarr;
+          </button>
+          <span className="ml-1 text-sm font-medium text-gray-800">
+            {formatRangeLabel(anchor, view)}
+          </span>
+        </div>
+
+        {/* Provider filter */}
+        <div className="ml-auto flex items-center gap-2">
+          <label className="text-sm text-gray-600">Provider</label>
+          <select
+            value={providerId}
+            onChange={(e) => setProviderId(e.target.value)}
+            className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm"
+          >
+            <option value="">All Providers</option>
+            {providerList.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.firstName} {p.lastName}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
 
       {isLoading ? (
@@ -111,12 +201,16 @@ export function AppointmentsPage() {
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Date</th>
+                {view !== "day" && (
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Date</th>
+                )}
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Time</th>
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Patient</th>
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Owner</th>
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Type</th>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Provider</th>
+                {!providerId && (
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Provider</th>
+                )}
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Status</th>
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Actions</th>
               </tr>
@@ -124,7 +218,9 @@ export function AppointmentsPage() {
             <tbody className="divide-y divide-gray-200">
               {appointments.map((apt) => (
                 <tr key={apt.id} className="hover:bg-gray-50">
-                  <td className="whitespace-nowrap px-4 py-3 text-sm">{formatDate(apt.scheduledAt)}</td>
+                  {view !== "day" && (
+                    <td className="whitespace-nowrap px-4 py-3 text-sm">{formatDate(apt.scheduledAt)}</td>
+                  )}
                   <td className="whitespace-nowrap px-4 py-3 text-sm">{formatTime(apt.scheduledAt)}</td>
                   <td className="px-4 py-3 text-sm">
                     <Link to={`/patients/${apt.patient.id}`} className="text-indigo-600 hover:underline">
@@ -135,9 +231,11 @@ export function AppointmentsPage() {
                     {apt.client.firstName} {apt.client.lastName}
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-700">{formatType(apt.type)}</td>
-                  <td className="px-4 py-3 text-sm text-gray-700">
-                    {apt.provider.firstName} {apt.provider.lastName}
-                  </td>
+                  {!providerId && (
+                    <td className="px-4 py-3 text-sm text-gray-700">
+                      {apt.provider.firstName} {apt.provider.lastName}
+                    </td>
+                  )}
                   <td className="px-4 py-3 text-sm">
                     <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_COLORS[apt.status] ?? "bg-gray-100"}`}>
                       {apt.status.replace("_", " ")}
