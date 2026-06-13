@@ -97,6 +97,13 @@ export function PatientDetailPage() {
             </Link>
           </p>
         </div>
+        <div className="flex items-center gap-2">
+          <Link
+            to={`/appointments/new?patientId=${patient.id}`}
+            className="rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700"
+          >
+            Schedule Appointment
+          </Link>
         <span
           className={`inline-block rounded-full px-3 py-1 text-sm font-medium ${
             patient.status === "ACTIVE"
@@ -108,6 +115,7 @@ export function PatientDetailPage() {
         >
           {patient.status}
         </span>
+        </div>
       </div>
 
       {/* Visit progress bar */}

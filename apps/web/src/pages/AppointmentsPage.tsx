@@ -129,7 +129,15 @@ export function AppointmentsPage() {
 
   return (
     <div className="space-y-4">
-      <h2 className="text-2xl font-bold text-gray-900">Schedule</h2>
+      <div className="flex items-center justify-between">
+        <h2 className="text-2xl font-bold text-gray-900">Schedule</h2>
+        <Link
+          to="/appointments/new"
+          className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+        >
+          New Appointment
+        </Link>
+      </div>
 
       <div className="flex flex-wrap items-center gap-4">
         {/* View mode toggle */}

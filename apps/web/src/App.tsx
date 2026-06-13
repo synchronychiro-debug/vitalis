@@ -15,6 +15,7 @@ import { InvoicesPage } from "./pages/InvoicesPage";
 import { InvoiceDetailPage } from "./pages/InvoiceDetailPage";
 import { NewInvoicePage } from "./pages/NewInvoicePage";
 import { NoteEditorPage } from "./pages/NoteEditorPage";
+import { NewAppointmentPage } from "./pages/NewAppointmentPage";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -45,6 +46,7 @@ export function App() {
                 <Route path="/clients" element={<ClientsPage />} />
                 <Route path="/clients/:id" element={<ClientDetailPage />} />
                 <Route path="/appointments" element={<AppointmentsPage />} />
+                <Route path="/appointments/new" element={<NewAppointmentPage />} />
                 <Route path="/invoices" element={<InvoicesPage />} />
                 <Route path="/invoices/new" element={<NewInvoicePage />} />
                 <Route path="/invoices/:id" element={<InvoiceDetailPage />} />
