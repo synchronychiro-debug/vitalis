@@ -26,9 +26,10 @@ interface User {
 type ViewMode = "day" | "week" | "month";
 
 const STATUS_COLORS: Record<string, string> = {
-  CONFIRMED: "bg-blue-100 text-blue-700",
-  COMPLETED: "bg-green-100 text-green-700",
   REQUESTED: "bg-yellow-100 text-yellow-700",
+  CONFIRMED: "bg-blue-100 text-blue-700",
+  CHECKED_IN: "bg-purple-100 text-purple-700",
+  COMPLETED: "bg-green-100 text-green-700",
   CANCELLED: "bg-red-100 text-red-700",
   NO_SHOW: "bg-gray-100 text-gray-700",
 };
@@ -49,7 +50,8 @@ function getDateRange(anchor: Date, view: ViewMode): { from: string; to: string 
   } else if (view === "week") {
     const dow = from.getDay();
     from.setDate(from.getDate() - dow);
-    to.setDate(from.getDate() + 6);
+    to.setTime(from.getTime());
+    to.setDate(to.getDate() + 6);
   } else {
     from.setDate(1);
     to.setMonth(to.getMonth() + 1, 0);
@@ -96,6 +98,7 @@ export function AppointmentsPage() {
   const [view, setView] = useState<ViewMode>("week");
   const [anchor, setAnchor] = useState(() => new Date());
   const [providerId, setProviderId] = useState<string>("");
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const dateRange = getDateRange(anchor, view);
 
@@ -107,7 +110,7 @@ export function AppointmentsPage() {
   const params = new URLSearchParams({
     from: `${dateRange.from}T00:00:00Z`,
     to: `${dateRange.to}T23:59:59Z`,
-    limit: "200",
+    limit: "100",
   });
   if (providerId) params.set("providerId", providerId);
 
@@ -126,6 +129,8 @@ export function AppointmentsPage() {
 
   const appointments = Array.isArray(data) ? data : [];
   const providerList = Array.isArray(providers) ? providers : [];
+
+  const colCount = (view !== "day" ? 1 : 0) + 6 + (!providerId ? 1 : 0);
 
   return (
     <div className="space-y-4">
@@ -224,76 +229,188 @@ export function AppointmentsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {appointments.map((apt) => (
-                <tr key={apt.id} className="hover:bg-gray-50">
-                  {view !== "day" && (
-                    <td className="whitespace-nowrap px-4 py-3 text-sm">{formatDate(apt.scheduledAt)}</td>
-                  )}
-                  <td className="whitespace-nowrap px-4 py-3 text-sm">{formatTime(apt.scheduledAt)}</td>
-                  <td className="px-4 py-3 text-sm">
-                    <Link to={`/patients/${apt.patient.id}`} className="text-indigo-600 hover:underline">
-                      {apt.patient.name}
-                    </Link>
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-700">
-                    {apt.client.firstName} {apt.client.lastName}
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-700">{formatType(apt.type)}</td>
-                  {!providerId && (
-                    <td className="px-4 py-3 text-sm text-gray-700">
-                      {apt.provider.firstName} {apt.provider.lastName}
-                    </td>
-                  )}
-                  <td className="px-4 py-3 text-sm">
-                    <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_COLORS[apt.status] ?? "bg-gray-100"}`}>
-                      {apt.status.replace("_", " ")}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-sm">
-                    {apt.status === "CONFIRMED" && (
-                      <div className="flex gap-1">
-                        <button
-                          onClick={() => statusMutation.mutate({ id: apt.id, status: "COMPLETED" })}
-                          className="rounded bg-green-50 px-2 py-1 text-xs text-green-700 hover:bg-green-100"
-                        >
-                          Complete
-                        </button>
-                        <button
-                          onClick={() => statusMutation.mutate({ id: apt.id, status: "NO_SHOW" })}
-                          className="rounded bg-gray-50 px-2 py-1 text-xs text-gray-600 hover:bg-gray-100"
-                        >
-                          No-show
-                        </button>
-                        <button
-                          onClick={() => statusMutation.mutate({ id: apt.id, status: "CANCELLED" })}
-                          className="rounded bg-red-50 px-2 py-1 text-xs text-red-600 hover:bg-red-100"
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    )}
-                    {apt.status === "REQUESTED" && (
-                      <button
-                        onClick={() => statusMutation.mutate({ id: apt.id, status: "CONFIRMED" })}
-                        className="rounded bg-blue-50 px-2 py-1 text-xs text-blue-700 hover:bg-blue-100"
-                      >
-                        Confirm
-                      </button>
-                    )}
-                    {apt.status === "COMPLETED" && (
-                      <Link
-                        to={`/notes/new?appointmentId=${apt.id}&patientId=${apt.patient.id}`}
-                        className="rounded bg-indigo-50 px-2 py-1 text-xs text-indigo-700 hover:bg-indigo-100"
-                      >
-                        Write Note
-                      </Link>
-                    )}
-                  </td>
-                </tr>
-              ))}
+              {appointments.map((apt) => {
+                const isExpanded = expandedId === apt.id;
+                return (
+                  <AppointmentRow
+                    key={apt.id}
+                    apt={apt}
+                    view={view}
+                    showProvider={!providerId}
+                    isExpanded={isExpanded}
+                    onToggle={() => setExpandedId(isExpanded ? null : apt.id)}
+                    onStatusChange={(status) => statusMutation.mutate({ id: apt.id, status })}
+                    colCount={colCount}
+                  />
+                );
+              })}
             </tbody>
           </table>
         </div>
+      )}
+    </div>
+  );
+}
+
+function AppointmentRow({
+  apt,
+  view,
+  showProvider,
+  isExpanded,
+  onToggle,
+  onStatusChange,
+  colCount,
+}: {
+  apt: Appointment;
+  view: ViewMode;
+  showProvider: boolean;
+  isExpanded: boolean;
+  onToggle: () => void;
+  onStatusChange: (status: string) => void;
+  colCount: number;
+}) {
+  const isActive = apt.status === "CHECKED_IN" || apt.status === "CONFIRMED";
+
+  return (
+    <>
+      <tr
+        className={`hover:bg-gray-50 ${isActive ? "cursor-pointer" : ""} ${isExpanded ? "bg-indigo-50/40" : ""}`}
+        onClick={isActive ? onToggle : undefined}
+      >
+        {view !== "day" && (
+          <td className="whitespace-nowrap px-4 py-3 text-sm">{formatDate(apt.scheduledAt)}</td>
+        )}
+        <td className="whitespace-nowrap px-4 py-3 text-sm">{formatTime(apt.scheduledAt)}</td>
+        <td className="px-4 py-3 text-sm">
+          <Link
+            to={`/patients/${apt.patient.id}`}
+            className="text-indigo-600 hover:underline"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {apt.patient.name}
+          </Link>
+        </td>
+        <td className="px-4 py-3 text-sm text-gray-700">
+          {apt.client.firstName} {apt.client.lastName}
+        </td>
+        <td className="px-4 py-3 text-sm text-gray-700">{formatType(apt.type)}</td>
+        {showProvider && (
+          <td className="px-4 py-3 text-sm text-gray-700">
+            {apt.provider.firstName} {apt.provider.lastName}
+          </td>
+        )}
+        <td className="px-4 py-3 text-sm">
+          <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_COLORS[apt.status] ?? "bg-gray-100"}`}>
+            {apt.status.replace(/_/g, " ")}
+          </span>
+        </td>
+        <td className="px-4 py-3 text-sm" onClick={(e) => e.stopPropagation()}>
+          {apt.status === "CONFIRMED" && (
+            <div className="flex gap-1">
+              <button
+                onClick={() => onStatusChange("CHECKED_IN")}
+                className="rounded bg-purple-50 px-2 py-1 text-xs font-medium text-purple-700 hover:bg-purple-100"
+              >
+                Check In
+              </button>
+              <button
+                onClick={() => onStatusChange("NO_SHOW")}
+                className="rounded bg-gray-50 px-2 py-1 text-xs text-gray-600 hover:bg-gray-100"
+              >
+                No-show
+              </button>
+              <button
+                onClick={() => onStatusChange("CANCELLED")}
+                className="rounded bg-red-50 px-2 py-1 text-xs text-red-600 hover:bg-red-100"
+              >
+                Cancel
+              </button>
+            </div>
+          )}
+          {apt.status === "REQUESTED" && (
+            <button
+              onClick={() => onStatusChange("CONFIRMED")}
+              className="rounded bg-blue-50 px-2 py-1 text-xs text-blue-700 hover:bg-blue-100"
+            >
+              Confirm
+            </button>
+          )}
+          {apt.status === "CHECKED_IN" && (
+            <button
+              onClick={() => onStatusChange("COMPLETED")}
+              className="rounded bg-green-50 px-2 py-1 text-xs font-medium text-green-700 hover:bg-green-100"
+            >
+              Complete Visit
+            </button>
+          )}
+          {apt.status === "COMPLETED" && (
+            <Link
+              to={`/notes/new?appointmentId=${apt.id}&patientId=${apt.patient.id}`}
+              className="rounded bg-indigo-50 px-2 py-1 text-xs text-indigo-700 hover:bg-indigo-100"
+            >
+              Write Note
+            </Link>
+          )}
+        </td>
+      </tr>
+      {isExpanded && (
+        <tr className="bg-indigo-50/30">
+          <td colSpan={colCount} className="px-4 py-3">
+            <VisitPanel apt={apt} onStatusChange={onStatusChange} />
+          </td>
+        </tr>
+      )}
+    </>
+  );
+}
+
+function VisitPanel({ apt, onStatusChange }: { apt: Appointment; onStatusChange: (s: string) => void }) {
+  return (
+    <div className="flex flex-wrap items-center gap-3">
+      {apt.status === "CONFIRMED" && (
+        <button
+          onClick={() => onStatusChange("CHECKED_IN")}
+          className="inline-flex items-center gap-1.5 rounded-md bg-purple-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-purple-700"
+        >
+          <span className="text-base">&#x2713;</span> Check In
+        </button>
+      )}
+
+      {apt.status === "CHECKED_IN" && (
+        <button
+          onClick={() => onStatusChange("COMPLETED")}
+          className="inline-flex items-center gap-1.5 rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700"
+        >
+          Complete Visit
+        </button>
+      )}
+
+      <Link
+        to={`/patients/${apt.patient.id}`}
+        className="inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+      >
+        Patient Chart
+      </Link>
+
+      <Link
+        to={`/notes/new?appointmentId=${apt.id}&patientId=${apt.patient.id}`}
+        className="inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+      >
+        Write Note
+      </Link>
+
+      <Link
+        to={`/invoices/new?clientId=${apt.client.id}`}
+        className="inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+      >
+        Create Invoice
+      </Link>
+
+      {apt.location && (
+        <span className="text-xs text-gray-500">Location: {apt.location}</span>
+      )}
+      {apt.notes && (
+        <span className="text-xs text-gray-500">Notes: {apt.notes}</span>
       )}
     </div>
   );

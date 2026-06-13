@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiGet, apiPost } from "../lib/api";
 
@@ -33,7 +33,9 @@ function emptyItem(): LineItem {
 
 export function NewInvoicePage() {
   const navigate = useNavigate();
-  const [clientId, setClientId] = useState("");
+  const [searchParams] = useSearchParams();
+  const preselectedClientId = searchParams.get("clientId") ?? "";
+  const [clientId, setClientId] = useState(preselectedClientId);
   const [items, setItems] = useState<LineItem[]>([emptyItem()]);
   const [taxDollars, setTaxDollars] = useState("");
   const [error, setError] = useState("");

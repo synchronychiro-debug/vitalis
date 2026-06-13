@@ -279,6 +279,7 @@ enum AppointmentType {
 enum AppointmentStatus {
   REQUESTED
   CONFIRMED
+  CHECKED_IN
   COMPLETED
   NO_SHOW
   CANCELLED
