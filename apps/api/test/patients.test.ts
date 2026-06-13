@@ -151,6 +151,37 @@ describe("patients", () => {
     expect(res.statusCode).toBe(404);
   });
 
+  it("soft-deletes a patient and excludes it from queries", async () => {
+    const { app, client, token } = await setup();
+    const created = await app.inject({
+      method: "POST",
+      url: "/api/v1/patients",
+      headers: auth(token),
+      payload: { clientId: client.id, name: "Shadow", species: "FELINE" },
+    });
+    const id = created.json().data.id;
+
+    // Soft-delete via direct Prisma (simulating a future DELETE endpoint)
+    const { prisma } = await import("../src/lib/prisma.js");
+    await prisma.patient.delete({ where: { id } });
+
+    // Patient should not appear in list
+    const list = await app.inject({
+      method: "GET",
+      url: "/api/v1/patients",
+      headers: auth(token),
+    });
+    expect(list.json().data.every((p: { id: string }) => p.id !== id)).toBe(true);
+
+    // GET by ID should also 404
+    const get = await app.inject({
+      method: "GET",
+      url: `/api/v1/patients/${id}`,
+      headers: auth(token),
+    });
+    expect(get.statusCode).toBe(404);
+  });
+
   it("updates a patient's chief complaint status", async () => {
     const { app, client, token } = await setup();
     const created = await app.inject({

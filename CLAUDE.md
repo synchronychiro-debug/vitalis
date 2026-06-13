@@ -21,9 +21,9 @@ Turborepo monorepo with npm workspaces:
 - `npm run build` — Build all packages
 - `npm run typecheck` — TypeScript checking across all packages
 - `npm run test` — Run all tests
-- `npm run db:migrate` — Run Prisma migrations
+- `npm run db:migrate` — Create and apply Prisma migrations (dev)
 - `npm run db:generate` — Generate Prisma client
-- `npm run db:push` — Push schema to database
+- `npm run db:push` — Push schema to database (prototyping only)
 - `npm run db:studio` — Open Prisma Studio
 
 ## Local Development
@@ -35,9 +35,9 @@ docker compose up postgres redis -d
 # Install dependencies
 npm install
 
-# Generate Prisma client and push schema
+# Generate Prisma client and run migrations
 npx prisma generate --schema=apps/api/prisma/schema.prisma
-npx prisma db push --schema=apps/api/prisma/schema.prisma
+npx prisma migrate dev --schema=apps/api/prisma/schema.prisma
 
 # Seed database
 npx tsx apps/api/prisma/seed.ts

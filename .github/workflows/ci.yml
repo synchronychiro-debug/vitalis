@@ -43,8 +43,11 @@ jobs:
       - name: Generate Prisma client
         run: npx prisma generate --schema=apps/api/prisma/schema.prisma
 
-      - name: Run database migrations
-        run: npx prisma db push --schema=apps/api/prisma/schema.prisma
+      - name: Deploy database migrations
+        run: npx prisma migrate deploy --schema=apps/api/prisma/schema.prisma
+
+      - name: Verify no pending schema drift
+        run: npx prisma migrate diff --schema=apps/api/prisma/schema.prisma --from-migrations apps/api/prisma/migrations --to-schema-datamodel apps/api/prisma/schema.prisma --exit-code
 
       - name: Build packages
         run: npm run build

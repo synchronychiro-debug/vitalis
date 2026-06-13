@@ -11,6 +11,8 @@ const ACCESS_TTL = "15m";
 const ACCESS_TTL_SECONDS = 900;
 const REFRESH_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const RESET_TTL_MS = 60 * 60 * 1000; // 1 hour
+const MAX_LOGIN_ATTEMPTS = 5;
+const LOCKOUT_DURATION_MS = 15 * 60 * 1000; // 15 minutes
 
 export const strongPassword = z
   .string()
@@ -52,17 +54,59 @@ export async function authRoutes(fastify: FastifyInstance) {
         where: { clinicId_email: { clinicId, email } },
       });
 
-      const valid =
-        user && user.isActive
-          ? await bcrypt.compare(password, user.passwordHash)
-          : false;
+      // Always hash *something* so response time doesn't leak whether the
+      // email exists. The dummy hash is a valid bcrypt string that will never
+      // match any real password.
+      const dummyHash =
+        "$2a$12$000000000000000000000uGBOLUN2smeqsNhYp.VIhJ9JYhNaEL.";
+      const hashToCheck =
+        user && user.isActive && user.deletedAt === null
+          ? user.passwordHash
+          : dummyHash;
 
-      if (!user || !valid) {
+      // Check lockout
+      if (user?.lockedUntil && user.lockedUntil > new Date()) {
+        // Still hash to prevent timing leaks
+        await bcrypt.compare(password, dummyHash);
+        return reply
+          .code(429)
+          .send({ success: false, error: "Account temporarily locked. Try again later." });
+      }
+
+      const valid = await bcrypt.compare(password, hashToCheck);
+
+      if (!user || !user.isActive || user.deletedAt !== null || !valid) {
+        // Record the failed attempt
+        if (user) {
+          const attempts = user.failedLoginAttempts + 1;
+          const lockedUntil =
+            attempts >= MAX_LOGIN_ATTEMPTS
+              ? new Date(Date.now() + LOCKOUT_DURATION_MS)
+              : null;
+          await prisma.user.update({
+            where: { id: user.id },
+            data: { failedLoginAttempts: attempts, lockedUntil },
+          });
+
+          if (lockedUntil) {
+            await recordAudit({
+              clinicId: user.clinicId,
+              userId: user.id,
+              action: "auth.lockout",
+              entityType: "User",
+              entityId: user.id,
+              changes: { failedAttempts: attempts },
+              ipAddress: request.ip,
+            });
+          }
+        }
+
         return reply
           .code(401)
           .send({ success: false, error: "Invalid credentials" });
       }
 
+      // Successful login — reset failed attempts.
       const accessToken = app.jwt.sign(
         { userId: user.id, clinicId: user.clinicId, role: user.role },
         { expiresIn: ACCESS_TTL },
@@ -71,7 +115,11 @@ export async function authRoutes(fastify: FastifyInstance) {
 
       await prisma.user.update({
         where: { id: user.id },
-        data: { lastLoginAt: new Date() },
+        data: {
+          lastLoginAt: new Date(),
+          failedLoginAttempts: 0,
+          lockedUntil: null,
+        },
       });
 
       return {
@@ -156,9 +204,6 @@ export async function authRoutes(fastify: FastifyInstance) {
     },
   );
 
-  // Request a password reset. Always returns success to avoid leaking which
-  // emails are registered. Until email infrastructure lands (Phase 6), the
-  // raw reset token is returned outside production so the flow is usable.
   app.post(
     "/forgot-password",
     {
@@ -177,7 +222,7 @@ export async function authRoutes(fastify: FastifyInstance) {
       });
 
       let rawToken: string | null = null;
-      if (user && user.isActive) {
+      if (user && user.isActive && user.deletedAt === null) {
         rawToken = crypto.randomUUID() + crypto.randomUUID();
         await prisma.passwordResetToken.create({
           data: {
@@ -224,7 +269,7 @@ export async function authRoutes(fastify: FastifyInstance) {
       await prisma.$transaction([
         prisma.user.update({
           where: { id: record.userId },
-          data: { passwordHash },
+          data: { passwordHash, failedLoginAttempts: 0, lockedUntil: null },
         }),
         prisma.passwordResetToken.update({
           where: { id: record.id },

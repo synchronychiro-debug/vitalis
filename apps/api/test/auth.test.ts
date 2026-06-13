@@ -179,6 +179,60 @@ describe("auth", () => {
     expect(res.json().data.resetToken).toBeUndefined();
   });
 
+  it("locks the account after 5 failed login attempts", async () => {
+    const app = await getApp();
+    const clinic = await createClinic();
+    const user = await createUser(clinic.id, UserRole.PROVIDER);
+
+    for (let i = 0; i < 5; i++) {
+      await app.inject({
+        method: "POST",
+        url: "/api/v1/auth/login",
+        payload: { clinicId: clinic.id, email: user.email, password: "wrong" },
+      });
+    }
+
+    // The 6th attempt should report locked (429), even with the correct password.
+    const locked = await app.inject({
+      method: "POST",
+      url: "/api/v1/auth/login",
+      payload: { clinicId: clinic.id, email: user.email, password: TEST_PASSWORD },
+    });
+    expect(locked.statusCode).toBe(429);
+    expect(locked.json().error).toMatch(/locked/i);
+  });
+
+  it("resets the lockout counter after a successful login", async () => {
+    const app = await getApp();
+    const clinic = await createClinic();
+    const user = await createUser(clinic.id, UserRole.PROVIDER);
+
+    // Fail 3 times, then succeed.
+    for (let i = 0; i < 3; i++) {
+      await app.inject({
+        method: "POST",
+        url: "/api/v1/auth/login",
+        payload: { clinicId: clinic.id, email: user.email, password: "wrong" },
+      });
+    }
+    const ok = await app.inject({
+      method: "POST",
+      url: "/api/v1/auth/login",
+      payload: { clinicId: clinic.id, email: user.email, password: TEST_PASSWORD },
+    });
+    expect(ok.statusCode).toBe(200);
+
+    // Now fail 4 more times — should not be locked because counter was reset.
+    for (let i = 0; i < 4; i++) {
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/v1/auth/login",
+        payload: { clinicId: clinic.id, email: user.email, password: "wrong" },
+      });
+      expect(res.statusCode).toBe(401);
+    }
+  });
+
   it("rejects a weak password on reset", async () => {
     const app = await getApp();
     const clinic = await createClinic();
