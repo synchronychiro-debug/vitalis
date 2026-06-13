@@ -1,0 +1,406 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Clinic ──────────────────────────────────────────────────
+
+model Clinic {
+  id                         String           @id @default(uuid())
+  name                       String
+  address                    String
+  city                       String
+  state                      String
+  zipCode                    String           @map("zip_code")
+  phone                      String
+  email                      String
+  website                    String?
+  logoUrl                    String?          @map("logo_url")
+  timezone                   String           @default("America/New_York")
+  schedulingMode             SchedulingMode   @default(OFFICE) @map("scheduling_mode")
+  defaultAppointmentDuration Int              @default(30) @map("default_appointment_duration")
+  isActive                   Boolean          @default(true) @map("is_active")
+  createdAt                  DateTime         @default(now()) @map("created_at")
+  updatedAt                  DateTime         @updatedAt @map("updated_at")
+
+  users        User[]
+  clients      Client[]
+  patients     Patient[]
+  appointments Appointment[]
+  services     Service[]
+  packages     Package[]
+  auditLogs    AuditLog[]
+
+  @@map("clinics")
+}
+
+enum SchedulingMode {
+  MOBILE
+  OFFICE
+  HYBRID
+}
+
+// ─── User ────────────────────────────────────────────────────
+
+model User {
+  id           String    @id @default(uuid())
+  clinicId     String    @map("clinic_id")
+  email        String
+  passwordHash String    @map("password_hash")
+  firstName    String    @map("first_name")
+  lastName     String    @map("last_name")
+  role         UserRole  @default(STAFF)
+  phone        String?
+  isActive     Boolean   @default(true) @map("is_active")
+  mfaEnabled   Boolean   @default(false) @map("mfa_enabled")
+  lastLoginAt  DateTime? @map("last_login_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  clinic              Clinic         @relation(fields: [clinicId], references: [id])
+  client              Client?
+  providerAppointments Appointment[] @relation("provider_appointments")
+  refreshTokens       RefreshToken[]
+  auditLogs           AuditLog[]
+
+  @@unique([clinicId, email])
+  @@index([clinicId])
+  @@map("users")
+}
+
+enum UserRole {
+  SUPER_ADMIN
+  ADMIN
+  PROVIDER
+  STAFF
+  CLIENT
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  token     String   @unique
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+// ─── Client ──────────────────────────────────────────────────
+
+model Client {
+  id            String   @id @default(uuid())
+  clinicId      String   @map("clinic_id")
+  userId        String?  @unique @map("user_id")
+  firstName     String   @map("first_name")
+  lastName      String   @map("last_name")
+  email         String
+  phone         String
+  address       String?
+  city          String?
+  state         String?
+  zipCode       String?  @map("zip_code")
+  creditBalance Int      @default(0) @map("credit_balance")
+  notes         String?
+  isActive      Boolean  @default(true) @map("is_active")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  clinic       Clinic        @relation(fields: [clinicId], references: [id])
+  user         User?         @relation(fields: [userId], references: [id])
+  patients     Patient[]
+  appointments Appointment[]
+  invoices     Invoice[]
+  clientPackages ClientPackage[]
+
+  @@index([clinicId])
+  @@index([clinicId, email])
+  @@map("clients")
+}
+
+// ─── Patient ─────────────────────────────────────────────────
+
+model Patient {
+  id                   String              @id @default(uuid())
+  clinicId             String              @map("clinic_id")
+  clientId             String              @map("client_id")
+  name                 String
+  species              Species
+  breed                String?
+  dateOfBirth          DateTime?           @map("date_of_birth")
+  sex                  AnimalSex?
+  color                String?
+  currentWeight        Decimal?            @map("current_weight") @db.Decimal(8, 2)
+  microchipId          String?             @map("microchip_id")
+  status               PatientStatus       @default(ACTIVE)
+  deceasedDate         DateTime?           @map("deceased_date")
+  primaryVetName       String?             @map("primary_vet_name")
+  primaryVetClinic     String?             @map("primary_vet_clinic")
+  primaryVetPhone      String?             @map("primary_vet_phone")
+  primaryVetEmail      String?             @map("primary_vet_email")
+  shareNotesWithVet    Boolean             @default(false) @map("share_notes_with_vet")
+  treatmentGoals       String?             @map("treatment_goals")
+  totalVisits          Int                 @default(0) @map("total_visits")
+  estimatedTotalVisits Int?                @map("estimated_total_visits")
+  chiefComplaint       String?             @map("chief_complaint")
+  chiefComplaintStatus ChiefComplaintStatus? @map("chief_complaint_status")
+  allergies            String?
+  medications          String?
+  priorConditions      String?             @map("prior_conditions")
+  createdAt            DateTime            @default(now()) @map("created_at")
+  updatedAt            DateTime            @updatedAt @map("updated_at")
+
+  clinic       Clinic        @relation(fields: [clinicId], references: [id])
+  client       Client        @relation(fields: [clientId], references: [id])
+  appointments Appointment[]
+  weightHistory WeightRecord[]
+
+  @@index([clinicId])
+  @@index([clientId])
+  @@map("patients")
+}
+
+enum Species {
+  CANINE
+  EQUINE
+  FELINE
+  OTHER
+}
+
+enum AnimalSex {
+  MALE_INTACT
+  MALE_NEUTERED
+  FEMALE_INTACT
+  FEMALE_SPAYED
+}
+
+enum PatientStatus {
+  ACTIVE
+  DECEASED
+  TRANSFERRED
+  INACTIVE
+}
+
+enum ChiefComplaintStatus {
+  RESOLVED
+  IMPROVED
+  UNCHANGED
+  DECLINED
+  WORSENED
+}
+
+model WeightRecord {
+  id        String   @id @default(uuid())
+  patientId String   @map("patient_id")
+  weight    Decimal  @db.Decimal(8, 2)
+  recordedAt DateTime @default(now()) @map("recorded_at")
+
+  patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([patientId])
+  @@map("weight_records")
+}
+
+// ─── Appointment ─────────────────────────────────────────────
+
+model Appointment {
+  id                 String            @id @default(uuid())
+  clinicId           String            @map("clinic_id")
+  patientId          String            @map("patient_id")
+  clientId           String            @map("client_id")
+  providerId         String            @map("provider_id")
+  type               AppointmentType   @default(ROUTINE_ADJUSTMENT)
+  status             AppointmentStatus @default(CONFIRMED)
+  scheduledAt        DateTime          @map("scheduled_at")
+  duration           Int               @default(30)
+  location           String?
+  notes              String?
+  cancellationReason String?           @map("cancellation_reason")
+  createdAt          DateTime          @default(now()) @map("created_at")
+  updatedAt          DateTime          @updatedAt @map("updated_at")
+
+  clinic   Clinic  @relation(fields: [clinicId], references: [id])
+  patient  Patient @relation(fields: [patientId], references: [id])
+  client   Client  @relation(fields: [clientId], references: [id])
+  provider User    @relation("provider_appointments", fields: [providerId], references: [id])
+  invoice  Invoice?
+
+  @@index([clinicId])
+  @@index([clinicId, providerId, scheduledAt])
+  @@index([clinicId, scheduledAt])
+  @@map("appointments")
+}
+
+enum AppointmentType {
+  INITIAL_EVAL
+  ROUTINE_ADJUSTMENT
+  LASER_SESSION
+  REEXAM
+  SOFT_TISSUE
+  KINESIO_TAPE
+  TELEHEALTH
+  OTHER
+}
+
+enum AppointmentStatus {
+  REQUESTED
+  CONFIRMED
+  COMPLETED
+  NO_SHOW
+  CANCELLED
+}
+
+// ─── Service & Package ───────────────────────────────────────
+
+model Service {
+  id          String   @id @default(uuid())
+  clinicId    String   @map("clinic_id")
+  name        String
+  description String?
+  price       Int
+  duration    Int      @default(30)
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  clinic       Clinic        @relation(fields: [clinicId], references: [id])
+  packageItems PackageItem[]
+  invoiceItems InvoiceItem[]
+
+  @@index([clinicId])
+  @@map("services")
+}
+
+model Package {
+  id             String   @id @default(uuid())
+  clinicId       String   @map("clinic_id")
+  name           String
+  description    String?
+  price          Int
+  expirationDays Int?     @map("expiration_days")
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  clinic         Clinic          @relation(fields: [clinicId], references: [id])
+  items          PackageItem[]
+  clientPackages ClientPackage[]
+
+  @@index([clinicId])
+  @@map("packages")
+}
+
+model PackageItem {
+  id        String @id @default(uuid())
+  packageId String @map("package_id")
+  serviceId String @map("service_id")
+  quantity  Int
+
+  package Package @relation(fields: [packageId], references: [id], onDelete: Cascade)
+  service Service @relation(fields: [serviceId], references: [id])
+
+  @@map("package_items")
+}
+
+model ClientPackage {
+  id          String    @id @default(uuid())
+  clientId    String    @map("client_id")
+  packageId   String    @map("package_id")
+  purchasedAt DateTime  @default(now()) @map("purchased_at")
+  expiresAt   DateTime? @map("expires_at")
+
+  client  Client  @relation(fields: [clientId], references: [id])
+  package Package @relation(fields: [packageId], references: [id])
+  usages  PackageUsage[]
+
+  @@index([clientId])
+  @@map("client_packages")
+}
+
+model PackageUsage {
+  id              String   @id @default(uuid())
+  clientPackageId String   @map("client_package_id")
+  serviceId       String   @map("service_id")
+  usedAt          DateTime @default(now()) @map("used_at")
+
+  clientPackage ClientPackage @relation(fields: [clientPackageId], references: [id])
+
+  @@map("package_usages")
+}
+
+// ─── Invoice & Billing ───────────────────────────────────────
+
+model Invoice {
+  id            String        @id @default(uuid())
+  clinicId      String        @map("clinic_id")
+  clientId      String        @map("client_id")
+  appointmentId String?       @unique @map("appointment_id")
+  status        InvoiceStatus @default(DRAFT)
+  subtotal      Int           @default(0)
+  taxAmount     Int           @default(0) @map("tax_amount")
+  creditApplied Int           @default(0) @map("credit_applied")
+  totalDue      Int           @default(0) @map("total_due")
+  paidAmount    Int           @default(0) @map("paid_amount")
+  issuedAt      DateTime?     @map("issued_at")
+  paidAt        DateTime?     @map("paid_at")
+  createdAt     DateTime      @default(now()) @map("created_at")
+  updatedAt     DateTime      @updatedAt @map("updated_at")
+
+  client      Client       @relation(fields: [clientId], references: [id])
+  appointment Appointment? @relation(fields: [appointmentId], references: [id])
+  items       InvoiceItem[]
+
+  @@index([clinicId, clientId])
+  @@map("invoices")
+}
+
+enum InvoiceStatus {
+  DRAFT
+  ISSUED
+  PAID
+  PARTIAL
+  VOID
+}
+
+model InvoiceItem {
+  id          String @id @default(uuid())
+  invoiceId   String @map("invoice_id")
+  serviceId   String? @map("service_id")
+  description String
+  quantity    Int    @default(1)
+  unitPrice   Int    @map("unit_price")
+  total       Int
+
+  invoice Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  service Service? @relation(fields: [serviceId], references: [id])
+
+  @@map("invoice_items")
+}
+
+// ─── Audit Log ───────────────────────────────────────────────
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  clinicId   String   @map("clinic_id")
+  userId     String?  @map("user_id")
+  action     String
+  entityType String   @map("entity_type")
+  entityId   String   @map("entity_id")
+  changes    Json?
+  ipAddress  String?  @map("ip_address")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  clinic Clinic @relation(fields: [clinicId], references: [id])
+  user   User?  @relation(fields: [userId], references: [id])
+
+  @@index([clinicId, createdAt])
+  @@index([clinicId, entityType, entityId])
+  @@map("audit_logs")
+}
