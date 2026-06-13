@@ -7,6 +7,7 @@ const NAV_ITEMS = [
   { to: "/appointments", label: "Schedule", icon: "S" },
   { to: "/patients", label: "Patients", icon: "P" },
   { to: "/clients", label: "Clients", icon: "C" },
+  { to: "/invoices", label: "Invoices", icon: "In" },
   { to: "/services", label: "Services", icon: "Sv" },
   { to: "/users", label: "Users", icon: "U", roles: ["SUPER_ADMIN", "ADMIN"] },
   { to: "/settings", label: "Settings", icon: "St", roles: ["SUPER_ADMIN", "ADMIN"] },

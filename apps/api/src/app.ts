@@ -25,6 +25,7 @@ import { clientRoutes } from "./routes/clients.js";
 import { appointmentRoutes } from "./routes/appointments.js";
 import { serviceRoutes } from "./routes/services.js";
 import { packageRoutes } from "./routes/packages.js";
+import { invoiceRoutes } from "./routes/invoices.js";
 
 export async function buildApp() {
   const app = Fastify({
@@ -141,6 +142,7 @@ export async function buildApp() {
   await app.register(appointmentRoutes, { prefix: "/api/v1/appointments" });
   await app.register(serviceRoutes, { prefix: "/api/v1/services" });
   await app.register(packageRoutes, { prefix: "/api/v1/packages" });
+  await app.register(invoiceRoutes, { prefix: "/api/v1/invoices" });
 
   const __dirname = dirname(fileURLToPath(import.meta.url));
   const webDist = join(__dirname, "../../web/dist");
