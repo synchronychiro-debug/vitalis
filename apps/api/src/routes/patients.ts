@@ -1,32 +1,107 @@
 import type { FastifyInstance } from "fastify";
+import type { ZodTypeProvider } from "fastify-type-provider-zod";
+import { z } from "zod";
+import {
+  Species,
+  AnimalSex,
+  PatientStatus,
+  ChiefComplaintStatus,
+} from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
-import { requireAuth, getAuthUser } from "../middleware/auth.js";
+import { recordAudit } from "../lib/audit.js";
+import { requireAuth, requireRole, getAuthUser } from "../middleware/auth.js";
 import { NotFoundError } from "../lib/errors.js";
+import { idParam, paginationQuery } from "../schemas/common.js";
 
-export async function patientRoutes(app: FastifyInstance) {
+const patientCore = {
+  name: z.string().min(1),
+  breed: z.string().optional(),
+  dateOfBirth: z.coerce.date().optional(),
+  sex: z.nativeEnum(AnimalSex).optional(),
+  color: z.string().optional(),
+  currentWeight: z.number().positive().optional(),
+  microchipId: z.string().optional(),
+  primaryVetName: z.string().optional(),
+  primaryVetClinic: z.string().optional(),
+  primaryVetPhone: z.string().optional(),
+  primaryVetEmail: z.string().email().optional(),
+  shareNotesWithVet: z.boolean().optional(),
+  treatmentGoals: z.string().optional(),
+  estimatedTotalVisits: z.number().int().positive().optional(),
+  chiefComplaint: z.string().optional(),
+  allergies: z.string().optional(),
+  medications: z.string().optional(),
+  priorConditions: z.string().optional(),
+};
+
+const createBody = z.object({
+  clientId: z.string().uuid(),
+  species: z.nativeEnum(Species),
+  ...patientCore,
+});
+
+const updateBody = z.object({
+  species: z.nativeEnum(Species).optional(),
+  status: z.nativeEnum(PatientStatus).optional(),
+  deceasedDate: z.coerce.date().optional(),
+  chiefComplaintStatus: z.nativeEnum(ChiefComplaintStatus).optional(),
+  ...patientCore,
+  name: z.string().min(1).optional(),
+});
+
+// Patients can be created/edited by clinical/admin staff but not clients.
+const staffWrite = requireRole("SUPER_ADMIN", "ADMIN", "PROVIDER", "STAFF");
+
+/** Restricts a CLIENT user to their own animals; staff/providers see all. */
+async function scopeForRole(
+  clinicId: string,
+  role: string,
+  userId: string,
+): Promise<Record<string, unknown>> {
+  if (role !== "CLIENT") return { clinicId };
+  const client = await prisma.client.findFirst({ where: { clinicId, userId } });
+  return { clinicId, clientId: client?.id ?? "__none__" };
+}
+
+export async function patientRoutes(fastify: FastifyInstance) {
+  const app = fastify.withTypeProvider<ZodTypeProvider>();
+
   app.get(
     "/",
-    { preHandler: [requireAuth] },
+    {
+      preHandler: [requireAuth],
+      schema: {
+        tags: ["patients"],
+        querystring: paginationQuery.extend({
+          species: z.nativeEnum(Species).optional(),
+          status: z.nativeEnum(PatientStatus).optional(),
+          clientId: z.string().uuid().optional(),
+          search: z.string().optional(),
+        }),
+      },
+    },
     async (request) => {
       const { clinicId, role, userId } = getAuthUser(request);
-      const query = request.query as { page?: string; limit?: string; species?: string; status?: string; clientId?: string };
-
-      const page = parseInt(query.page ?? "1", 10);
-      const limit = Math.min(parseInt(query.limit ?? "25", 10), 100);
+      const { page = 1, limit = 25, species, status, clientId, search } =
+        request.query;
       const skip = (page - 1) * limit;
 
-      const where: any = { clinicId };
-      if (query.species) where.species = query.species.toUpperCase();
-      if (query.status) where.status = query.status.toUpperCase();
-      if (query.clientId) where.clientId = query.clientId;
-
-      if (role === "CLIENT") {
-        const client = await prisma.client.findFirst({ where: { clinicId, userId } });
-        if (client) where.clientId = client.id;
-      }
+      const where = await scopeForRole(clinicId, role, userId);
+      if (species) where["species"] = species;
+      if (status) where["status"] = status;
+      if (clientId && role !== "CLIENT") where["clientId"] = clientId;
+      if (search) where["name"] = { contains: search, mode: "insensitive" };
 
       const [patients, total] = await Promise.all([
-        prisma.patient.findMany({ where, skip, take: limit, orderBy: { name: "asc" }, include: { client: { select: { firstName: true, lastName: true } } } }),
+        prisma.patient.findMany({
+          where,
+          skip,
+          take: limit,
+          orderBy: { name: "asc" },
+          include: {
+            client: { select: { id: true, firstName: true, lastName: true } },
+          },
+        }),
         prisma.patient.count({ where }),
       ]);
 
@@ -38,80 +113,89 @@ export async function patientRoutes(app: FastifyInstance) {
     },
   );
 
-  app.get<{ Params: { id: string } }>(
+  app.get(
     "/:id",
-    { preHandler: [requireAuth] },
-    async (request, reply) => {
-      const { clinicId } = getAuthUser(request);
+    { preHandler: [requireAuth], schema: { tags: ["patients"], params: idParam } },
+    async (request) => {
+      const { clinicId, role, userId } = getAuthUser(request);
+      const where = await scopeForRole(clinicId, role, userId);
       const patient = await prisma.patient.findFirst({
-        where: { id: request.params.id, clinicId },
+        where: { ...where, id: request.params.id },
         include: {
-          client: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } },
+          client: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              email: true,
+              phone: true,
+            },
+          },
           weightHistory: { orderBy: { recordedAt: "desc" }, take: 10 },
         },
       });
-
-      if (!patient) {
-        return reply.code(404).send({ success: false, error: "Patient not found" });
-      }
-
+      if (!patient) throw new NotFoundError("Patient");
       return { success: true, data: patient };
     },
   );
 
-  app.post<{ Body: Record<string, unknown> }>(
+  app.post(
     "/",
-    { preHandler: [requireAuth] },
-    async (request) => {
-      const { clinicId } = getAuthUser(request);
-      const body = request.body as any;
+    {
+      preHandler: [staffWrite],
+      schema: { tags: ["patients"], body: createBody },
+    },
+    async (request, reply) => {
+      const { clinicId, userId } = getAuthUser(request);
+
+      const client = await prisma.client.findFirst({
+        where: { id: request.body.clientId, clinicId },
+      });
+      if (!client) throw new NotFoundError("Client");
 
       const patient = await prisma.patient.create({
-        data: {
-          clinicId,
-          clientId: body.clientId,
-          name: body.name,
-          species: body.species?.toUpperCase(),
-          breed: body.breed,
-          dateOfBirth: body.dateOfBirth ? new Date(body.dateOfBirth) : undefined,
-          sex: body.sex?.toUpperCase(),
-          color: body.color,
-          currentWeight: body.currentWeight,
-          microchipId: body.microchipId,
-          primaryVetName: body.primaryVetName,
-          primaryVetClinic: body.primaryVetClinic,
-          primaryVetPhone: body.primaryVetPhone,
-          primaryVetEmail: body.primaryVetEmail,
-          shareNotesWithVet: body.shareNotesWithVet ?? false,
-          treatmentGoals: body.treatmentGoals,
-          estimatedTotalVisits: body.estimatedTotalVisits,
-          chiefComplaint: body.chiefComplaint,
-          allergies: body.allergies,
-          medications: body.medications,
-          priorConditions: body.priorConditions,
-        },
+        data: { clinicId, ...request.body },
       });
 
-      return { success: true, data: patient };
+      await recordAudit({
+        clinicId,
+        userId,
+        action: "patient.create",
+        entityType: "Patient",
+        entityId: patient.id,
+        ipAddress: request.ip,
+      });
+
+      return reply.code(201).send({ success: true, data: patient });
     },
   );
 
-  app.patch<{ Params: { id: string }; Body: Record<string, unknown> }>(
+  app.patch(
     "/:id",
-    { preHandler: [requireAuth] },
-    async (request, reply) => {
-      const { clinicId } = getAuthUser(request);
+    {
+      preHandler: [staffWrite],
+      schema: { tags: ["patients"], params: idParam, body: updateBody },
+    },
+    async (request) => {
+      const { clinicId, userId } = getAuthUser(request);
       const existing = await prisma.patient.findFirst({
         where: { id: request.params.id, clinicId },
       });
-
-      if (!existing) {
-        return reply.code(404).send({ success: false, error: "Patient not found" });
-      }
+      if (!existing) throw new NotFoundError("Patient");
 
       const patient = await prisma.patient.update({
-        where: { id: request.params.id },
-        data: request.body as any,
+        where: { id: existing.id },
+        data: request.body,
+      });
+
+      await recordAudit({
+        clinicId,
+        userId,
+        action: "patient.update",
+        entityType: "Patient",
+        entityId: patient.id,
+        changes: request.body as Record<string, unknown>,
+        ipAddress: request.ip,
       });
 
       return { success: true, data: patient };

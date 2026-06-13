@@ -1,25 +1,49 @@
 import type { FastifyInstance } from "fastify";
+import type { ZodTypeProvider } from "fastify-type-provider-zod";
+import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
-import { requireAuth, getAuthUser } from "../middleware/auth.js";
+import { recordAudit } from "../lib/audit.js";
+import { requireRole, getAuthUser } from "../middleware/auth.js";
+import { NotFoundError } from "../lib/errors.js";
+import { idParam, paginationQuery } from "../schemas/common.js";
 
-export async function clientRoutes(app: FastifyInstance) {
+const staff = requireRole("SUPER_ADMIN", "ADMIN", "PROVIDER", "STAFF");
+
+const clientCore = {
+  firstName: z.string().min(1),
+  lastName: z.string().min(1),
+  email: z.string().email(),
+  phone: z.string().min(1),
+  address: z.string().optional(),
+  city: z.string().optional(),
+  state: z.string().optional(),
+  zipCode: z.string().optional(),
+  notes: z.string().optional(),
+};
+
+export async function clientRoutes(fastify: FastifyInstance) {
+  const app = fastify.withTypeProvider<ZodTypeProvider>();
+
   app.get(
     "/",
-    { preHandler: [requireAuth] },
+    {
+      preHandler: [staff],
+      schema: {
+        tags: ["clients"],
+        querystring: paginationQuery.extend({ search: z.string().optional() }),
+      },
+    },
     async (request) => {
       const { clinicId } = getAuthUser(request);
-      const query = request.query as { page?: string; limit?: string; search?: string };
-
-      const page = parseInt(query.page ?? "1", 10);
-      const limit = Math.min(parseInt(query.limit ?? "25", 10), 100);
+      const { page = 1, limit = 25, search } = request.query;
       const skip = (page - 1) * limit;
 
-      const where: any = { clinicId };
-      if (query.search) {
-        where.OR = [
-          { firstName: { contains: query.search, mode: "insensitive" } },
-          { lastName: { contains: query.search, mode: "insensitive" } },
-          { email: { contains: query.search, mode: "insensitive" } },
+      const where: Record<string, unknown> = { clinicId };
+      if (search) {
+        where["OR"] = [
+          { firstName: { contains: search, mode: "insensitive" } },
+          { lastName: { contains: search, mode: "insensitive" } },
+          { email: { contains: search, mode: "insensitive" } },
         ];
       }
 
@@ -42,10 +66,10 @@ export async function clientRoutes(app: FastifyInstance) {
     },
   );
 
-  app.get<{ Params: { id: string } }>(
+  app.get(
     "/:id",
-    { preHandler: [requireAuth] },
-    async (request, reply) => {
+    { preHandler: [staff], schema: { tags: ["clients"], params: idParam } },
+    async (request) => {
       const { clinicId } = getAuthUser(request);
       const client = await prisma.client.findFirst({
         where: { id: request.params.id, clinicId },
@@ -54,57 +78,68 @@ export async function clientRoutes(app: FastifyInstance) {
           _count: { select: { invoices: true } },
         },
       });
-
-      if (!client) {
-        return reply.code(404).send({ success: false, error: "Client not found" });
-      }
-
+      if (!client) throw new NotFoundError("Client");
       return { success: true, data: client };
     },
   );
 
-  app.post<{ Body: Record<string, unknown> }>(
+  app.post(
     "/",
-    { preHandler: [requireAuth] },
-    async (request) => {
-      const { clinicId } = getAuthUser(request);
-      const body = request.body as any;
-
+    {
+      preHandler: [staff],
+      schema: { tags: ["clients"], body: z.object(clientCore) },
+    },
+    async (request, reply) => {
+      const { clinicId, userId } = getAuthUser(request);
       const client = await prisma.client.create({
-        data: {
-          clinicId,
-          firstName: body.firstName,
-          lastName: body.lastName,
-          email: body.email,
-          phone: body.phone,
-          address: body.address,
-          city: body.city,
-          state: body.state,
-          zipCode: body.zipCode,
-          notes: body.notes,
-        },
+        data: { clinicId, ...request.body },
       });
 
-      return { success: true, data: client };
+      await recordAudit({
+        clinicId,
+        userId,
+        action: "client.create",
+        entityType: "Client",
+        entityId: client.id,
+        ipAddress: request.ip,
+      });
+
+      return reply.code(201).send({ success: true, data: client });
     },
   );
 
-  app.patch<{ Params: { id: string }; Body: Record<string, unknown> }>(
+  app.patch(
     "/:id",
-    { preHandler: [requireAuth] },
-    async (request, reply) => {
-      const { clinicId } = getAuthUser(request);
+    {
+      preHandler: [staff],
+      schema: {
+        tags: ["clients"],
+        params: idParam,
+        body: z
+          .object({ ...clientCore, isActive: z.boolean() })
+          .partial(),
+      },
+    },
+    async (request) => {
+      const { clinicId, userId } = getAuthUser(request);
       const existing = await prisma.client.findFirst({
         where: { id: request.params.id, clinicId },
       });
-
-      if (!existing) {
-        return reply.code(404).send({ success: false, error: "Client not found" });
-      }
+      if (!existing) throw new NotFoundError("Client");
 
       const client = await prisma.client.update({
-        where: { id: request.params.id },
-        data: request.body as any,
+        where: { id: existing.id },
+        data: request.body,
+      });
+
+      await recordAudit({
+        clinicId,
+        userId,
+        action: "client.update",
+        entityType: "Client",
+        entityId: client.id,
+        changes: request.body as Record<string, unknown>,
+        ipAddress: request.ip,
       });
 
       return { success: true, data: client };

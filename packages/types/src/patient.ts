@@ -1,6 +1,10 @@
-export type Species = "canine" | "equine" | "feline" | "other";
-export type PatientStatus = "active" | "deceased" | "transferred" | "inactive";
-export type Sex = "male_intact" | "male_neutered" | "female_intact" | "female_spayed";
+export type Species = "CANINE" | "EQUINE" | "FELINE" | "OTHER";
+export type PatientStatus = "ACTIVE" | "DECEASED" | "TRANSFERRED" | "INACTIVE";
+export type Sex =
+  | "MALE_INTACT"
+  | "MALE_NEUTERED"
+  | "FEMALE_INTACT"
+  | "FEMALE_SPAYED";
 
 export interface Patient {
   id: string;
@@ -34,11 +38,11 @@ export interface Patient {
 }
 
 export type ChiefComplaintStatus =
-  | "resolved"
-  | "improved"
-  | "unchanged"
-  | "declined"
-  | "worsened";
+  | "RESOLVED"
+  | "IMPROVED"
+  | "UNCHANGED"
+  | "DECLINED"
+  | "WORSENED";
 
 export interface CreatePatientInput {
   clientId: string;

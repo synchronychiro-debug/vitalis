@@ -17,7 +17,7 @@ export interface Clinic {
   updatedAt: Date;
 }
 
-export type SchedulingMode = "mobile" | "office" | "hybrid";
+export type SchedulingMode = "MOBILE" | "OFFICE" | "HYBRID";
 
 export interface CreateClinicInput {
   name: string;

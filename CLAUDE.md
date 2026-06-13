@@ -46,6 +46,26 @@ npx tsx apps/api/prisma/seed.ts
 npm run dev --workspace=apps/api
 ```
 
+## Running Tests
+
+Integration tests run against a real Postgres database via Fastify's
+`inject()`. Point `DATABASE_URL` at a test database (its tables are truncated
+between tests) and run:
+
+```bash
+export DATABASE_URL="postgresql://postgres:postgres@localhost:5432/vitalis_test"
+export JWT_SECRET="test-secret"
+npm run test --workspace=apps/api          # or: --coverage
+```
+
+CI provisions Postgres and runs generate → db push → build → typecheck → test.
+
+## API
+
+REST API documented in `docs/api.md`; interactive OpenAPI/Swagger UI is served
+at `/docs` when the API is running. All endpoints validate input with Zod,
+enforce role-based access, and scope every query by `clinic_id`.
+
 ## Architecture Decisions
 
 - All monetary values stored in cents (integer)

@@ -3,12 +3,15 @@ import bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient();
 
+// Stable UUID so the seed is idempotent and the clinic id passes API validation.
+const SYNCHRONY_CLINIC_ID = "11111111-1111-1111-1111-111111111111";
+
 async function main() {
   const clinic = await prisma.clinic.upsert({
-    where: { id: "sync-chiro-001" },
+    where: { id: SYNCHRONY_CLINIC_ID },
     update: {},
     create: {
-      id: "sync-chiro-001",
+      id: SYNCHRONY_CLINIC_ID,
       name: "Synchrony Chiropractic",
       address: "123 Main Street",
       city: "Ocala",

@@ -65,6 +65,7 @@ model User {
   client              Client?
   providerAppointments Appointment[] @relation("provider_appointments")
   refreshTokens       RefreshToken[]
+  passwordResetTokens PasswordResetToken[]
   auditLogs           AuditLog[]
 
   @@unique([clinicId, email])
@@ -91,6 +92,20 @@ model RefreshToken {
 
   @@index([userId])
   @@map("refresh_tokens")
+}
+
+model PasswordResetToken {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  tokenHash String   @unique @map("token_hash")
+  expiresAt DateTime @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("password_reset_tokens")
 }
 
 // ─── Client ──────────────────────────────────────────────────

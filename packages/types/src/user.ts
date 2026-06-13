@@ -1,9 +1,9 @@
 export type UserRole =
-  | "super_admin"
-  | "admin"
-  | "provider"
-  | "staff"
-  | "client";
+  | "SUPER_ADMIN"
+  | "ADMIN"
+  | "PROVIDER"
+  | "STAFF"
+  | "CLIENT";
 
 export interface User {
   id: string;

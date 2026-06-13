@@ -1,19 +1,19 @@
 export type AppointmentStatus =
-  | "requested"
-  | "confirmed"
-  | "completed"
-  | "no_show"
-  | "cancelled";
+  | "REQUESTED"
+  | "CONFIRMED"
+  | "COMPLETED"
+  | "NO_SHOW"
+  | "CANCELLED";
 
 export type AppointmentType =
-  | "initial_eval"
-  | "routine_adjustment"
-  | "laser_session"
-  | "reexam"
-  | "soft_tissue"
-  | "kinesio_tape"
-  | "telehealth"
-  | "other";
+  | "INITIAL_EVAL"
+  | "ROUTINE_ADJUSTMENT"
+  | "LASER_SESSION"
+  | "REEXAM"
+  | "SOFT_TISSUE"
+  | "KINESIO_TAPE"
+  | "TELEHEALTH"
+  | "OTHER";
 
 export interface Appointment {
   id: string;
