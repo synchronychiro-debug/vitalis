@@ -2,12 +2,31 @@
   "name": "@vitalis/web",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "scripts": {
-    "build": "echo 'web app not yet scaffolded'",
-    "dev": "echo 'web app not yet scaffolded'",
-    "typecheck": "echo 'web app not yet scaffolded'",
-    "lint": "echo 'web app not yet scaffolded'",
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc -b",
+    "lint": "echo 'no lint configured yet'",
     "test": "echo 'no tests yet'",
     "clean": "rm -rf dist .turbo"
+  },
+  "dependencies": {
+    "@tanstack/react-query": "^5.75.0",
+    "@vitalis/types": "*",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "react-router-dom": "^7.6.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.1.0",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "@vitejs/plugin-react": "^4.5.0",
+    "autoprefixer": "^10.4.0",
+    "tailwindcss": "^4.1.0",
+    "typescript": "^5.8.0",
+    "vite": "^6.3.0"
   }
 }
