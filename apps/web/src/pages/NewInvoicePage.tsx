@@ -40,7 +40,7 @@ export function NewInvoicePage() {
 
   const { data: clientsData } = useQuery({
     queryKey: ["clients-list"],
-    queryFn: () => apiGet<Client[]>("/clients?limit=500"),
+    queryFn: () => apiGet<Client[]>("/clients?limit=100"),
   });
 
   const { data: servicesData } = useQuery({
