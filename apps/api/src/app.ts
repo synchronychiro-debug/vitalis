@@ -1,8 +1,12 @@
+import { existsSync } from "node:fs";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import Fastify, { type FastifyError } from "fastify";
 import cors from "@fastify/cors";
 import helmet from "@fastify/helmet";
 import jwt from "@fastify/jwt";
 import rateLimit from "@fastify/rate-limit";
+import fastifyStatic from "@fastify/static";
 import swagger from "@fastify/swagger";
 import swaggerUi from "@fastify/swagger-ui";
 import { Prisma } from "@prisma/client";
@@ -137,6 +141,18 @@ export async function buildApp() {
   await app.register(appointmentRoutes, { prefix: "/api/v1/appointments" });
   await app.register(serviceRoutes, { prefix: "/api/v1/services" });
   await app.register(packageRoutes, { prefix: "/api/v1/packages" });
+
+  const __dirname = dirname(fileURLToPath(import.meta.url));
+  const webDist = join(__dirname, "../../web/dist");
+  if (process.env["NODE_ENV"] === "production" && existsSync(webDist)) {
+    await app.register(fastifyStatic, { root: webDist, wildcard: false });
+    app.setNotFoundHandler((request, reply) => {
+      if (request.url.startsWith("/api/") || request.url === "/health" || request.url.startsWith("/docs")) {
+        return reply.code(404).send({ success: false, error: "Not found", statusCode: 404 });
+      }
+      return reply.sendFile("index.html");
+    });
+  }
 
   return app;
 }
