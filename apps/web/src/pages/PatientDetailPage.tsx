@@ -2,6 +2,15 @@ import { useParams, Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { apiGet } from "../lib/api";
 
+interface ClinicalNote {
+  id: string;
+  status: string;
+  subjective: string | null;
+  createdAt: string;
+  provider: { firstName: string; lastName: string };
+  appointment: { scheduledAt: string; type: string };
+}
+
 interface Patient {
   id: string;
   name: string;
@@ -182,6 +191,9 @@ export function PatientDetailPage() {
         </div>
       </div>
 
+      {/* Clinical Notes */}
+      <PatientNotes patientId={patient.id} />
+
       {/* Owner info */}
       <div className="rounded-lg border border-gray-200 bg-white p-4">
         <h3 className="mb-2 text-sm font-semibold text-gray-700">Owner</h3>
@@ -191,6 +203,61 @@ export function PatientDetailPage() {
         <p className="text-sm text-gray-500">{patient.client.email}</p>
         <p className="text-sm text-gray-500">{patient.client.phone}</p>
       </div>
+    </div>
+  );
+}
+
+const NOTE_STATUS_COLORS: Record<string, string> = {
+  DRAFT: "bg-gray-100 text-gray-700",
+  SIGNED: "bg-blue-100 text-blue-700",
+  LOCKED: "bg-green-100 text-green-700",
+  VOIDED: "bg-red-100 text-red-700",
+};
+
+function PatientNotes({ patientId }: { patientId: string }) {
+  const { data } = useQuery({
+    queryKey: ["notes", "patient", patientId],
+    queryFn: () => apiGet<ClinicalNote[]>(`/notes?patientId=${patientId}&limit=50`),
+  });
+
+  const notes = Array.isArray(data)
+    ? data
+    : (data as { data?: ClinicalNote[] } | undefined)?.data ?? [];
+
+  return (
+    <div>
+      <h3 className="mb-3 text-lg font-semibold text-gray-800">Clinical Notes</h3>
+      {notes.length === 0 ? (
+        <p className="text-sm text-gray-500">No clinical notes yet.</p>
+      ) : (
+        <div className="space-y-2">
+          {notes.map((n) => (
+            <Link
+              key={n.id}
+              to={`/notes/${n.id}`}
+              className="block rounded-lg border border-gray-200 bg-white p-3 hover:border-indigo-200 hover:bg-indigo-50/30"
+            >
+              <div className="flex items-center justify-between">
+                <div className="text-sm">
+                  <span className="font-medium text-gray-900">
+                    {new Date(n.appointment.scheduledAt).toLocaleDateString()}
+                  </span>
+                  <span className="ml-2 text-gray-500">{n.appointment.type.replace(/_/g, " ")}</span>
+                  <span className="ml-2 text-gray-500">
+                    Dr. {n.provider.firstName} {n.provider.lastName}
+                  </span>
+                </div>
+                <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${NOTE_STATUS_COLORS[n.status]}`}>
+                  {n.status}
+                </span>
+              </div>
+              {n.subjective && (
+                <p className="mt-1 text-xs text-gray-600 truncate">S: {n.subjective}</p>
+              )}
+            </Link>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

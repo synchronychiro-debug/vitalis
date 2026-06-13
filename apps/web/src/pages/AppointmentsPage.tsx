@@ -272,6 +272,14 @@ export function AppointmentsPage() {
                         Confirm
                       </button>
                     )}
+                    {apt.status === "COMPLETED" && (
+                      <Link
+                        to={`/notes/new?appointmentId=${apt.id}&patientId=${apt.patient.id}`}
+                        className="rounded bg-indigo-50 px-2 py-1 text-xs text-indigo-700 hover:bg-indigo-100"
+                      >
+                        Write Note
+                      </Link>
+                    )}
                   </td>
                 </tr>
               ))}

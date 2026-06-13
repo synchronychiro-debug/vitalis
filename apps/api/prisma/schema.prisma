@@ -33,7 +33,9 @@ model Clinic {
   appointments Appointment[]
   services     Service[]
   packages     Package[]
-  auditLogs    AuditLog[]
+  auditLogs      AuditLog[]
+  clinicalNotes  ClinicalNote[]
+  macros         Macro[]
 
   @@map("clinics")
 }
@@ -70,6 +72,9 @@ model User {
   refreshTokens       RefreshToken[]
   passwordResetTokens PasswordResetToken[]
   auditLogs           AuditLog[]
+  clinicalNotes       ClinicalNote[] @relation("note_provider")
+  noteAddendums       NoteAddendum[] @relation("addendum_author")
+  macros              Macro[]        @relation("macro_provider")
 
   @@unique([clinicId, email])
   @@index([clinicId])
@@ -177,10 +182,11 @@ model Patient {
   updatedAt            DateTime            @updatedAt @map("updated_at")
   deletedAt            DateTime?           @map("deleted_at")
 
-  clinic       Clinic        @relation(fields: [clinicId], references: [id])
-  client       Client        @relation(fields: [clientId], references: [id])
-  appointments Appointment[]
+  clinic        Clinic         @relation(fields: [clinicId], references: [id])
+  client        Client         @relation(fields: [clientId], references: [id])
+  appointments  Appointment[]
   weightHistory WeightRecord[]
+  clinicalNotes ClinicalNote[]
 
   @@index([clinicId])
   @@index([clientId])
@@ -249,8 +255,9 @@ model Appointment {
   clinic   Clinic  @relation(fields: [clinicId], references: [id])
   patient  Patient @relation(fields: [patientId], references: [id])
   client   Client  @relation(fields: [clientId], references: [id])
-  provider User    @relation("provider_appointments", fields: [providerId], references: [id])
-  invoice  Invoice?
+  provider     User          @relation("provider_appointments", fields: [providerId], references: [id])
+  invoice      Invoice?
+  clinicalNote ClinicalNote?
 
   @@index([clinicId])
   @@index([clinicId, providerId, scheduledAt])
@@ -353,6 +360,91 @@ model PackageUsage {
   clientPackage ClientPackage @relation(fields: [clientPackageId], references: [id])
 
   @@map("package_usages")
+}
+
+// ─── Clinical Notes ─────────────────────────────────────────
+
+model ClinicalNote {
+  id                   String             @id @default(uuid())
+  clinicId             String             @map("clinic_id")
+  appointmentId        String             @unique @map("appointment_id")
+  patientId            String             @map("patient_id")
+  providerId           String             @map("provider_id")
+  status               NoteStatus         @default(DRAFT)
+  subjective           String?            @db.Text
+  objective            String?            @db.Text
+  assessment           String?            @db.Text
+  plan                 String?            @db.Text
+  chiefComplaintUpdate ChiefComplaintStatus? @map("chief_complaint_update")
+  saltSourceNoteId     String?            @map("salt_source_note_id")
+  signedAt             DateTime?          @map("signed_at")
+  lockedAt             DateTime?          @map("locked_at")
+  voidedAt             DateTime?          @map("voided_at")
+  voidReason           String?            @map("void_reason")
+  createdAt            DateTime           @default(now()) @map("created_at")
+  updatedAt            DateTime           @updatedAt @map("updated_at")
+
+  clinic      Clinic         @relation(fields: [clinicId], references: [id])
+  appointment Appointment    @relation(fields: [appointmentId], references: [id])
+  patient     Patient        @relation(fields: [patientId], references: [id])
+  provider    User           @relation("note_provider", fields: [providerId], references: [id])
+  saltSource  ClinicalNote?  @relation("salt_chain", fields: [saltSourceNoteId], references: [id])
+  saltCopies  ClinicalNote[] @relation("salt_chain")
+  addendums   NoteAddendum[]
+
+  @@index([clinicId])
+  @@index([patientId])
+  @@index([appointmentId])
+  @@map("clinical_notes")
+}
+
+enum NoteStatus {
+  DRAFT
+  SIGNED
+  LOCKED
+  VOIDED
+}
+
+model NoteAddendum {
+  id        String   @id @default(uuid())
+  noteId    String   @map("note_id")
+  authorId  String   @map("author_id")
+  content   String   @db.Text
+  createdAt DateTime @default(now()) @map("created_at")
+
+  note   ClinicalNote @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  author User         @relation("addendum_author", fields: [authorId], references: [id])
+
+  @@index([noteId])
+  @@map("note_addendums")
+}
+
+model Macro {
+  id         String   @id @default(uuid())
+  clinicId   String   @map("clinic_id")
+  providerId String?  @map("provider_id")
+  title      String
+  soapSection SoapSection @map("soap_section")
+  body       String   @db.Text
+  variables  Json     @default("[]")
+  isSystem   Boolean  @default(false) @map("is_system")
+  isActive   Boolean  @default(true) @map("is_active")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  clinic   Clinic @relation(fields: [clinicId], references: [id])
+  provider User?  @relation("macro_provider", fields: [providerId], references: [id])
+
+  @@index([clinicId])
+  @@index([clinicId, providerId])
+  @@map("macros")
+}
+
+enum SoapSection {
+  SUBJECTIVE
+  OBJECTIVE
+  ASSESSMENT
+  PLAN
 }
 
 // ─── Invoice & Billing ───────────────────────────────────────
